@@ -12,6 +12,27 @@ local function TreeSitterIdentify()
 	print(type)
 end
 
+local function list_children(node)
+  local children = {}
+  for i = 0, node:child_count() - 1 do
+    local child = node:child(i)
+    table.insert(children, child)
+  end
+  return children
+end
+
+local function TreeSitterIdentifyChildren()
+	local node = ts_utils.get_node_at_cursor()
+    local children = list_children(node)
+
+    local child_list = ''
+
+    for _, child in ipairs(children) do
+        child_list = child_list .. ', ' .. child:type()
+    end
+    print(child_list)
+end
+
 local function FindParentNode(node, target_type)
 	local type = "cursor"
 	local correct_node
@@ -30,6 +51,16 @@ local function FindParentNode(node, target_type)
 	end
 
 	return correct_node, type
+end
+
+local function find_child(node, type_name)
+  for i = 0, node:named_child_count() - 1 do
+    local child = node:named_child(i)
+    if child:type() == type_name then
+      return child
+    end
+  end
+  return nil
 end
 
 local function get_line_length(row)
@@ -86,6 +117,9 @@ local function move_selection_based_on_curlys(start_row, start_col, end_row, end
 		if is_line_whitespace_until_col(vim.api.nvim_get_current_buf(), end_row, end_col) then
 			end_row = end_row - 1
 			end_col = get_line_length(end_row)
+            if end_col > 0 then
+                end_col = end_col - 1
+            end
 		else
 			end_col = end_col - 1
 		end
@@ -195,17 +229,31 @@ local function SelectFunctionNode()
 	SelectViaNodes(start_node, end_node)
 end
 
-local function SelectInsideFunction()
+local function GetInsideFunctionNodes()
 	local node = ts_utils.get_node_at_cursor()
     local start_node = FindParentNode(node, 'function_body')
-    print(start_node:type())
-    local start_row, start_col, end_row, end_col = move_selection_based_on_curlys(start_node:range())
+    if start_node ~= nil then
+        return start_node, start_node
+    end
 
-    local end_node = start_node
+    local start_node = FindParentNode(node, 'function_declaration')
+    if start_node ~= nil then
+        local start_node = find_child(start_node, 'block')
+        return start_node, start_node
+    end
+
+end
+
+local function SelectInsideFunction()
+	local start_node, end_node = GetInsideFunctionNodes()
 	if start_node == nil or end_node == nil then
 		return
 	end
-    SelectText(start_row, start_col, end_row, end_col)
+	local start_row, start_col, _, _ = start_node:range()
+	local _, _, end_row, end_col = end_node:range()
+
+    start_row, start_col, end_row, end_col = move_selection_based_on_curlys(start_row, start_col, end_row, end_col)
+	SelectText(start_row, start_col, end_row, end_col)
 end
 
 vim.keymap.set("n", "vaf", function()
@@ -221,7 +269,7 @@ vim.keymap.set("n", "daf", function()
 end, { desc = "Delete around function" })
 vim.keymap.set("n", "caf", function()
 	SelectFunctionNode()
-	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<esc>O", true, false, true), "n", false)
+	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<bs><esc>o", true, false, true), "n", false)
 end, { desc = "Change around function" })
 
 vim.keymap.set("n", "vac", function()
@@ -237,7 +285,7 @@ vim.keymap.set("n", "dac", function()
 end, { desc = "Delete around class" })
 vim.keymap.set("n", "cac", function()
 	SelectClassNode()
-	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<esc>O", true, false, true), "n", false)
+	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<bs><esc>o", true, false, true), "n", false)
 end, { desc = "Change around class" })
 
 vim.keymap.set("n", "vic", function()
@@ -253,7 +301,7 @@ vim.keymap.set("n", "dic", function()
 end, { desc = "Delete inside class" })
 vim.keymap.set("n", "cic", function()
 	SelectInsideClassNode()
-	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<esc>O", true, false, true), "n", false)
+	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<bs><esc>o", true, false, true), "n", false)
 end, { desc = "Change inside class" })
 
 vim.keymap.set("n", "vif", function()
@@ -269,10 +317,13 @@ vim.keymap.set("n", "dif", function()
 end, { desc = "Delete inside function" })
 vim.keymap.set("n", "cif", function()
 	SelectInsideFunction()
-	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<esc>O", true, false, true), "n", false)
+	vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("c<bs><esc>o", true, false, true), "n", false)
 end, { desc = "Change inside function" })
 
 vim.keymap.set("n", "<leader>id", function()
 	TreeSitterIdentify()
 end, { desc = "Identify current node" })
+vim.keymap.set("n", "<leader>ic", function()
+	TreeSitterIdentifyChildren()
+end, { desc = "Identify children of current node" })
 
